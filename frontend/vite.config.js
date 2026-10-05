@@ -3,6 +3,9 @@ import { defineConfig } from 'vite'
 
 // https://vite.dev/config/
 export default defineConfig({
+  // Serve built assets under /static/ so Django + WhiteNoise can serve them
+  // in production (the React build is served by Django itself).
+  base: '/static/',
   plugins: [react()],
   server: {
     port: 5173,
