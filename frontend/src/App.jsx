@@ -1,130 +1,101 @@
-import { useEffect, useState } from 'react'
+import { useMemo, useState } from 'react'
 import './App.css'
-
-// In dev, Vite proxies /api to Django on :8000. In production the React
-// build is served by Django itself, so relative /api just works.
-const API = '/api'
-
-function useFetch(path) {
-  const [data, setData] = useState(null)
-  const [error, setError] = useState(null)
-
-  useEffect(() => {
-    let cancelled = false
-    fetch(`${API}${path}`)
-      .then((res) => {
-        if (!res.ok) throw new Error(`HTTP ${res.status}`)
-        return res.json()
-      })
-      .then((json) => {
-        if (!cancelled) setData(json)
-      })
-      .catch((err) => {
-        if (!cancelled) setError(err.message)
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [path])
-
-  return { data, error }
-}
-
-function Section({ title, error, children }) {
-  return (
-    <section className="card">
-      <h2>{title}</h2>
-      {error ? <p className="error">Couldn't load: {error}</p> : children}
-    </section>
-  )
-}
-
-function SchoolEvents() {
-  const { data, error } = useFetch('/school-events/')
-  return (
-    <Section title="🎒 School Events" error={error}>
-      {!data ? (
-        <p className="muted">Loading…</p>
-      ) : data.length === 0 ? (
-        <p className="muted">No upcoming events.</p>
-      ) : (
-        <ul className="list">
-          {data.map((e) => (
-            <li key={e.id}>
-              <div className="row">
-                <strong>{e.title}</strong>
-                <span className="badge">{e.date}</span>
-              </div>
-              {e.source && <div className="meta">via {e.source}</div>}
-              {e.notes && <p className="notes">{e.notes}</p>}
-            </li>
-          ))}
-        </ul>
-      )}
-    </Section>
-  )
-}
-
-function Packages() {
-  const { data, error } = useFetch('/packages/')
-  return (
-    <Section title="📦 Packages" error={error}>
-      {!data ? (
-        <p className="muted">Loading…</p>
-      ) : data.length === 0 ? (
-        <p className="muted">Nothing on the way.</p>
-      ) : (
-        <ul className="list">
-          {data.map((p) => (
-            <li key={p.id}>
-              <div className="row">
-                <strong>{p.carrier}</strong>
-                <span className="badge badge-blue">{p.status}</span>
-              </div>
-              {p.expected_date && (
-                <div className="meta">Expected {p.expected_date}</div>
-              )}
-              {p.tracking_note && <p className="notes">{p.tracking_note}</p>}
-            </li>
-          ))}
-        </ul>
-      )}
-    </Section>
-  )
-}
-
-function Digest() {
-  const { data, error } = useFetch('/digest/')
-  return (
-    <Section title="✉️ Inbox Digest" error={error}>
-      {!data ? (
-        <p className="muted">Loading…</p>
-      ) : (
-        <ul className="digest">
-          {data.map((d) => (
-            <li key={d.id}>
-              <span>{d.category}</span>
-              <span className="count">{d.count}</span>
-            </li>
-          ))}
-        </ul>
-      )}
-    </Section>
-  )
-}
+import { useApi } from './api'
+import { addDays, dayKey, fmtLong, fmtToday, startOfWeek } from './dates'
+import WeekStrip from './components/WeekStrip'
+import Agenda from './components/Agenda'
+import Packages from './components/Packages'
+import Digest from './components/Digest'
 
 export default function App() {
+  const today = useMemo(() => {
+    const d = new Date()
+    d.setHours(0, 0, 0, 0)
+    return d
+  }, [])
+  const todayKey = dayKey(today)
+
+  const weekDays = useMemo(() => {
+    const start = startOfWeek(today)
+    return Array.from({ length: 7 }, (_, i) => addDays(start, i))
+  }, [today])
+
+  // Tapping a day in the strip filters the agenda; tapping again clears.
+  const [selectedKey, setSelectedKey] = useState(null)
+
+  const eventsReq = useApi('/school-events/')
+  const packagesReq = useApi('/packages/')
+  const digestReq = useApi('/digest/')
+
+  const events = useMemo(() => {
+    if (!eventsReq.data) return null
+    return [...eventsReq.data].sort((a, b) => a.date.localeCompare(b.date))
+  }, [eventsReq.data])
+
+  const eventCounts = useMemo(() => {
+    const counts = {}
+    for (const e of events ?? []) counts[e.date] = (counts[e.date] || 0) + 1
+    return counts
+  }, [events])
+
+  const visibleEvents = useMemo(() => {
+    if (!events) return null
+    return selectedKey ? events.filter((e) => e.date === selectedKey) : events
+  }, [events, selectedKey])
+
+  const selectedDay = selectedKey
+    ? weekDays.find((d) => dayKey(d) === selectedKey)
+    : null
+
   return (
-    <div className="page">
-      <header className="header">
-        <h1>Family Hub</h1>
-        <p>A quick glance at school, packages, and your inbox.</p>
+    <div className="app">
+      <header className="site-header">
+        <div>
+          <h1>Family Hub</h1>
+          <p className="dateline">{fmtToday(today)}</p>
+        </div>
+        {selectedKey && (
+          <button
+            type="button"
+            className="clear-filter"
+            onClick={() => setSelectedKey(null)}
+          >
+            Clear day filter
+          </button>
+        )}
       </header>
-      <main className="grid">
-        <SchoolEvents />
-        <Packages />
-        <Digest />
-      </main>
+
+      <WeekStrip
+        days={weekDays}
+        todayKey={todayKey}
+        selectedKey={selectedKey}
+        eventCounts={eventCounts}
+        onSelect={(key) => setSelectedKey((prev) => (prev === key ? null : key))}
+      />
+
+      <div className="layout">
+        <section className="card" aria-label="Agenda">
+          <h2>{selectedDay ? fmtLong(selectedDay) : 'This week'}</h2>
+          <Agenda
+            events={visibleEvents}
+            error={eventsReq.error}
+            retry={eventsReq.retry}
+            todayKey={todayKey}
+            filtered={!!selectedKey}
+          />
+        </section>
+
+        <div className="side">
+          <section className="card" aria-label="Packages">
+            <h2>Packages</h2>
+            <Packages req={packagesReq} />
+          </section>
+          <section className="card" aria-label="Inbox digest">
+            <h2>Inbox digest</h2>
+            <Digest req={digestReq} />
+          </section>
+        </div>
+      </div>
     </div>
   )
 }
