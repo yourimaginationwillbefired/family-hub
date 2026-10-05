@@ -114,21 +114,23 @@ function AgendaCard({ events, packages, todayKey, error, onRetry }) {
 
 function DeliveryCard({ packages, todayKey }) {
   if (!packages) return null
-  const upcoming = (packages || [])
+  const upcoming = packages
     .filter((p) => p.expected_date)
     .sort((a, b) => (a.expected_date < b.expected_date ? -1 : 1))
-  const next = upcoming.find((p) => p.expected_date >= todayKey) || upcoming[upcoming.length - 1]
-  if (!next) return null
+  const next = upcoming.find((p) => p.expected_date >= todayKey)
+  const shown = next || upcoming[upcoming.length - 1]
+  if (!shown) return null
+  const past = !next
   return (
     <article className="card delivery-card">
       <div className="delivery-top">
-        <span className="eyebrow">NEXT DELIVERY</span>
+        <span className="eyebrow">{past ? 'LAST DELIVERY' : 'NEXT DELIVERY'}</span>
         <span className="parcel-icon" aria-hidden="true"><ParcelIcon /></span>
       </div>
-      <h3>{next.carrier} · arriving {arrivalWord(next.expected_date, todayKey)}</h3>
-      <p>{next.tracking_note || next.status}</p>
+      <h3>{shown.carrier} · {past ? 'delivered' : 'arriving'} {arrivalWord(shown.expected_date, todayKey)}</h3>
+      <p>{shown.tracking_note || shown.status}</p>
       <div className="progress" aria-label="Delivery progress">
-        <span style={{ width: `${progressFor(next.status)}%` }}></span>
+        <span style={{ width: `${progressFor(shown.status)}%` }}></span>
       </div>
       <div className="track"><span>Shipped</span><span>In transit</span><span>Delivered</span></div>
     </article>

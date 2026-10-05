@@ -22,19 +22,21 @@ function weekLabel(start) {
   return `${m0.slice(0, 3)} ${start.getDate()} – ${MONTHS_LONG[end.getMonth()].slice(0, 3)} ${end.getDate()}`
 }
 
+function groupInto(map, key, item) {
+  const list = map[key] || (map[key] = [])
+  list.push(item)
+}
+
 export default function CalendarTab({ today, events, packages }) {
   const [weekOffset, setWeekOffset] = useState(0)
   const weekStart = addDays(startOfWeekSunday(today), weekOffset * 7)
   const todayK = dayKey(today)
 
   const schoolByDay = {}
-  for (const e of events || []) {
-    ;(schoolByDay[e.date] = schoolByDay[e.date] || []).push(e)
-  }
+  for (const e of events || []) groupInto(schoolByDay, e.date, e)
   const deliveryByDay = {}
   for (const p of packages || []) {
-    if (!p.expected_date) continue
-    ;(deliveryByDay[p.expected_date] = deliveryByDay[p.expected_date] || []).push(p)
+    if (p.expected_date) groupInto(deliveryByDay, p.expected_date, p)
   }
 
   const days = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i))
@@ -78,7 +80,7 @@ export default function CalendarTab({ today, events, packages }) {
             }
             for (const p of deliveryByDay[key] || []) {
               chips.push(
-                <span className="cal-event" key={`p-${p.id}`}>{p.carrier} delivery</span>
+                <span className="cal-event blue" key={`p-${p.id}`}>{p.carrier} delivery</span>
               )
             }
             return (
