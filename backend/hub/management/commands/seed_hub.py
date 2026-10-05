@@ -1,5 +1,8 @@
 from datetime import date, timedelta
 
+import os
+
+from django.contrib.auth.models import User
 from django.core.management.base import BaseCommand
 
 from hub.models import DigestItem, Package, SchoolEvent
@@ -67,5 +70,17 @@ class Command(BaseCommand):
             DigestItem.objects.update_or_create(
                 category=category, defaults={"count": count}
             )
+
+        # Provision the login user from env vars when provided (used on Render).
+        admin_user = os.environ.get("HUB_ADMIN_USER")
+        admin_pw = os.environ.get("HUB_ADMIN_PASSWORD")
+        if admin_user and admin_pw:
+            user, _ = User.objects.update_or_create(
+                username=admin_user,
+                defaults={"is_staff": True, "is_superuser": True},
+            )
+            user.set_password(admin_pw)
+            user.save()
+            self.stdout.write(self.style.SUCCESS(f"Provisioned login user '{admin_user}'."))
 
         self.stdout.write(self.style.SUCCESS("Seeded school events, packages, and digest items."))
